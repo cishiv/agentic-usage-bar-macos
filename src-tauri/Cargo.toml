@@ -1,0 +1,21 @@
+[package]
+name = "claude-usage-menubar"
+version = "0.1.0"
+description = "Menubar app showing Claude Code session & weekly usage"
+authors = ["Shiv"]
+edition = "2021"
+
+[lib]
+name = "claude_usage_menubar_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
+tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["time"] }
