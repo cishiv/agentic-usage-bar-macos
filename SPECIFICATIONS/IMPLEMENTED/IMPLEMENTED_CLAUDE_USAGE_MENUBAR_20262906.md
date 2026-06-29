@@ -1,6 +1,6 @@
 # Claude Usage Menubar
 
-> Status: NOT YET IMPLEMENTED
+> Status: IMPLEMENTED
 > Date: 2026-06-29
 > Author: Shiv
 
