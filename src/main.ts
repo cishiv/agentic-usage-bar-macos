@@ -1,10 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
+import { LogicalSize } from "@tauri-apps/api/dpi";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
+type Provider = "claude" | "codex";
+
 type ModelUsage = { name: string; percent: number };
 
-type Usage = {
+type ProviderUsage = {
   session_percent: number;
   session_resets_at: string | null;
   session_severity: string;
@@ -12,14 +15,26 @@ type Usage = {
   weekly_resets_at: string | null;
   weekly_severity: string;
   models: ModelUsage[];
-  subscription_type: string | null;
+  plan: string | null;
+};
+
+type ProviderSnapshot = {
+  provider: Provider;
+  usage: ProviderUsage | null;
+  error: string | null;
 };
 
 type Snapshot = {
-  usage: Usage | null;
-  error: string | null;
+  providers: ProviderSnapshot[];
   fetched_at: number | null;
 };
+
+const PROVIDER_NAMES: Record<Provider, string> = {
+  claude: "Claude Code",
+  codex: "Codex",
+};
+
+const WINDOW_WIDTH = 300;
 
 let latest: Snapshot | null = null;
 
@@ -61,6 +76,40 @@ function meter(
     </div>`;
 }
 
+function modelChips(models: ModelUsage[]): string {
+  if (!models.length) return "";
+  return (
+    `<div class="models"><div class="models-head">This week by model</div>` +
+    models
+      .map(
+        (m) =>
+          `<span class="model"><span class="mname">${m.name}</span><span class="mpct">${Math.round(m.percent)}%</span></span>`,
+      )
+      .join("") +
+    `</div>`
+  );
+}
+
+function providerSection(snapshot: ProviderSnapshot): string {
+  const { provider, usage, error } = snapshot;
+  const plan = usage?.plan ? `<span class="plan">${usage.plan.toUpperCase()}</span>` : "";
+  const head = `<div class="provider-head"><span class="provider-name">${PROVIDER_NAMES[provider]}</span>${plan}</div>`;
+
+  if (!usage) {
+    return `<div class="provider">${head}<div class="error">${error ?? "No data yet."}</div></div>`;
+  }
+
+  const staleNote = error ? `<div class="error">Offline · showing last update</div>` : "";
+  return `
+    <div class="provider">
+      ${head}
+      ${staleNote}
+      ${meter("Session", "5-hour", usage.session_percent, usage.session_severity, usage.session_resets_at)}
+      ${meter("Weekly", "7-day", usage.weekly_percent, usage.weekly_severity, usage.weekly_resets_at)}
+      ${modelChips(usage.models)}
+    </div>`;
+}
+
 function updateCountdowns(): void {
   document.querySelectorAll<HTMLElement>(".sub[data-resets]").forEach((node) => {
     const iso = node.dataset.resets;
@@ -68,44 +117,22 @@ function updateCountdowns(): void {
   });
 }
 
+function resizeToContent(): void {
+  const height = el("card").offsetHeight;
+  void getCurrentWindow().setSize(new LogicalSize(WINDOW_WIDTH, height));
+}
+
 function render(): void {
   if (!latest) return;
-  const { usage, error, fetched_at } = latest;
-  const stats = el("stats");
-  const models = el("models");
-  const errorBox = el("error");
-  const plan = el("plan");
+  const { providers, fetched_at } = latest;
 
-  plan.textContent = usage?.subscription_type
-    ? `${usage.subscription_type.toUpperCase()} plan`
-    : "";
-
-  if (error && !usage) {
-    stats.innerHTML = "";
-    models.innerHTML = "";
-    errorBox.hidden = false;
-    errorBox.textContent = error;
+  const container = el("providers");
+  if (!fetched_at) {
+    container.innerHTML = `<div class="loading">Loading…</div>`;
+  } else if (!providers.length) {
+    container.innerHTML = `<div class="error">No agents found. Sign in to Claude Code or Codex and refresh.</div>`;
   } else {
-    errorBox.hidden = !error;
-    if (error) errorBox.textContent = `Offline · showing last update`;
-
-    if (!usage) {
-      stats.innerHTML = `<div class="loading">Loading…</div>`;
-      models.innerHTML = "";
-    } else {
-      stats.innerHTML =
-        meter("Session", "5-hour", usage.session_percent, usage.session_severity, usage.session_resets_at) +
-        meter("Weekly", "7-day", usage.weekly_percent, usage.weekly_severity, usage.weekly_resets_at);
-      models.innerHTML = usage.models.length
-        ? `<div class="models-head">This week by model</div>` +
-          usage.models
-            .map(
-              (m) =>
-                `<span class="model"><span class="mname">${m.name}</span><span class="mpct">${Math.round(m.percent)}%</span></span>`,
-            )
-            .join("")
-        : "";
-    }
+    container.innerHTML = providers.map(providerSection).join(`<div class="divider"></div>`);
   }
 
   el("updated").textContent = fetched_at
@@ -113,6 +140,7 @@ function render(): void {
     : "—";
 
   updateCountdowns();
+  resizeToContent();
 }
 
 function apply(snapshot: Snapshot): void {

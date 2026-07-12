@@ -1,4 +1,4 @@
-use crate::usage::{worst_severity, Usage};
+use crate::providers::{worst_severity, Provider, ProviderSnapshot};
 use crate::AppState;
 use tauri::{
     image::Image,
@@ -8,7 +8,38 @@ use tauri::{
 
 pub const TRAY_ID: &str = "main-tray";
 
-const IDLE_TITLE: &str = "S –  W –";
+const IDLE_TITLE: &str = "–";
+
+fn provider_label(provider: Provider) -> &'static str {
+    match provider {
+        Provider::Claude => "C",
+        Provider::Codex => "X",
+    }
+}
+
+/// One segment per provider: `C 11·8` (session·weekly), `C –·–` on error.
+fn format_title(snapshots: &[ProviderSnapshot]) -> String {
+    if snapshots.is_empty() {
+        return IDLE_TITLE.to_string();
+    }
+    snapshots
+        .iter()
+        .map(|s| {
+            let label = provider_label(s.provider);
+            // An errored provider shows –·– even if a stale usage is carried
+            // along for the popover.
+            match (&s.error, &s.usage) {
+                (None, Some(u)) => format!(
+                    "{label} {}·{}",
+                    u.session_percent.round() as i64,
+                    u.weekly_percent.round() as i64
+                ),
+                _ => format!("{label} –·–"),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("  ")
+}
 
 /// Pick the colored gauge icon matching the severity.
 fn tray_icon(severity: &str) -> Image<'static> {
@@ -40,25 +71,13 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Reflect the latest usage in the menubar: `S 11%  W 8%` + colored gauge.
-pub fn update_tray(app: &AppHandle, usage: &Usage) {
+/// Reflect the latest snapshots in the menubar: `C 11·8  X 8·11` + colored gauge.
+pub fn update_tray(app: &AppHandle, snapshots: &[ProviderSnapshot]) {
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         return;
     };
-    let title = format!(
-        "S {}%  W {}%",
-        usage.session_percent.round() as i64,
-        usage.weekly_percent.round() as i64
-    );
-    let _ = tray.set_title(Some(title));
-    let _ = tray.set_icon(Some(tray_icon(worst_severity(usage))));
-}
-
-/// Show a neutral placeholder when we have no usage (error / not logged in).
-pub fn set_tray_idle(app: &AppHandle) {
-    if let Some(tray) = app.tray_by_id(TRAY_ID) {
-        let _ = tray.set_title(Some(IDLE_TITLE.to_string()));
-    }
+    let _ = tray.set_title(Some(format_title(snapshots)));
+    let _ = tray.set_icon(Some(tray_icon(worst_severity(snapshots))));
 }
 
 /// Open the popover under the menubar icon, or close it if already open.
@@ -86,4 +105,62 @@ pub fn toggle_popover(app: &AppHandle) {
     let _ = window.move_window(Position::TrayBottomCenter);
     let _ = window.show();
     let _ = window.set_focus();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::providers::ProviderUsage;
+
+    fn usage(session: f64, weekly: f64) -> ProviderUsage {
+        ProviderUsage {
+            session_percent: session,
+            session_resets_at: None,
+            session_severity: "normal".into(),
+            weekly_percent: weekly,
+            weekly_resets_at: None,
+            weekly_severity: "normal".into(),
+            models: vec![],
+            plan: None,
+        }
+    }
+
+    #[test]
+    fn title_with_both_providers() {
+        let snapshots = vec![
+            ProviderSnapshot {
+                provider: Provider::Claude,
+                usage: Some(usage(11.0, 8.0)),
+                error: None,
+            },
+            ProviderSnapshot {
+                provider: Provider::Codex,
+                usage: Some(usage(8.4, 11.0)),
+                error: None,
+            },
+        ];
+        assert_eq!(format_title(&snapshots), "C 11·8  X 8·11");
+    }
+
+    #[test]
+    fn title_with_errored_provider() {
+        let snapshots = vec![
+            ProviderSnapshot {
+                provider: Provider::Claude,
+                usage: Some(usage(11.0, 8.0)),
+                error: None,
+            },
+            ProviderSnapshot {
+                provider: Provider::Codex,
+                usage: Some(usage(8.0, 11.0)), // stale carry-over still shows –·–
+                error: Some("auth expired".into()),
+            },
+        ];
+        assert_eq!(format_title(&snapshots), "C 11·8  X –·–");
+    }
+
+    #[test]
+    fn title_with_no_providers() {
+        assert_eq!(format_title(&[]), "–");
+    }
 }

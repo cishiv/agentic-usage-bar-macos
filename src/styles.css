@@ -30,7 +30,7 @@ body {
 }
 
 .card {
-  height: 100vh;
+  /* Window height is resized to fit this card after every render. */
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -41,13 +41,25 @@ body {
   backdrop-filter: blur(24px);
 }
 
-.head {
+.providers {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.provider {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.provider-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
 }
 
-.title {
+.provider-name {
   font-size: 13px;
   font-weight: 600;
 }
@@ -59,10 +71,8 @@ body {
   color: var(--accent);
 }
 
-.stats {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+.divider {
+  border-top: 1px solid var(--border);
 }
 
 .meter {
@@ -174,7 +184,6 @@ body {
 }
 
 .foot {
-  margin-top: auto;
   display: flex;
   align-items: center;
   justify-content: space-between;

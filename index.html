@@ -4,29 +4,20 @@
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="/src/styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Claude Usage</title>
+    <title>Agentic Usage</title>
     <script type="module" src="/src/main.ts" defer></script>
   </head>
   <body>
-    <div class="card">
-      <header class="head">
-        <span class="title">Claude Code Usage</span>
-        <span class="plan" id="plan"></span>
-      </header>
-
-      <section class="stats" id="stats">
-        <!-- session + weekly meters injected here -->
+    <div class="card" id="card">
+      <section class="providers" id="providers">
+        <!-- one section per provider injected here -->
       </section>
-
-      <section class="models" id="models"></section>
-
-      <div class="error" id="error" hidden></div>
 
       <footer class="foot">
         <span class="updated" id="updated">—</span>
         <div class="actions">
           <button id="refresh" title="Refresh now">Refresh</button>
-          <button id="quit" class="quit" title="Quit Claude Usage">Quit</button>
+          <button id="quit" class="quit" title="Quit Agentic Usage Bar">Quit</button>
         </div>
       </footer>
     </div>

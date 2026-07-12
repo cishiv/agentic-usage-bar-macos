@@ -1,13 +1,12 @@
-mod keychain;
+mod providers;
 mod tray;
-mod usage;
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use providers::ProviderSnapshot;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
-use usage::Usage;
 
 /// Shared app state: the latest snapshot plus a marker used to make the
 /// tray-click toggle behave correctly against the popover's blur-to-hide.
@@ -16,11 +15,10 @@ pub struct AppState {
     pub last_hidden: Mutex<Option<Instant>>,
 }
 
-/// What the frontend renders. Keeps the last good `usage` even on error.
+/// What the frontend renders: one entry per provider that has credentials.
 #[derive(Clone, Default, Serialize)]
 pub struct UsageSnapshot {
-    usage: Option<Usage>,
-    error: Option<String>,
+    providers: Vec<ProviderSnapshot>,
     fetched_at: Option<i64>, // epoch millis
 }
 
@@ -31,45 +29,43 @@ fn now_millis() -> i64 {
         .unwrap_or(0)
 }
 
-/// Read credentials, fetch usage, update the tray, cache + broadcast the result.
+/// Fetch all providers, update the tray, cache + broadcast the result.
+/// A provider that errored keeps its last good usage so the popover can show
+/// stale data alongside the error.
 async fn do_refresh(app: &AppHandle) -> UsageSnapshot {
-    let result = match keychain::read_credentials() {
-        Ok(creds) => usage::fetch_usage(&creds).await,
-        Err(e) => Err(e),
-    };
+    let mut snapshots = providers::fetch_all().await;
 
-    let snapshot = match result {
-        Ok(u) => {
-            eprintln!(
-                "[claude-usage] session {}%  weekly {}%",
+    {
+        let prev = app.state::<AppState>();
+        let prev = prev.snapshot.lock().unwrap();
+        for s in snapshots.iter_mut().filter(|s| s.usage.is_none()) {
+            s.usage = prev
+                .providers
+                .iter()
+                .find(|p| p.provider == s.provider)
+                .and_then(|p| p.usage.clone());
+        }
+    }
+
+    for s in &snapshots {
+        match (&s.usage, &s.error) {
+            (Some(u), None) => eprintln!(
+                "[agentic-usage] {:?}: session {}%  weekly {}%",
+                s.provider,
                 u.session_percent.round(),
                 u.weekly_percent.round()
-            );
-            tray::update_tray(app, &u);
-            UsageSnapshot {
-                usage: Some(u),
-                error: None,
-                fetched_at: Some(now_millis()),
-            }
+            ),
+            (_, Some(e)) => eprintln!("[agentic-usage] {:?} error: {e}", s.provider),
+            _ => {}
         }
-        Err(e) => {
-            eprintln!("[claude-usage] error: {e}");
-            tray::set_tray_idle(app);
-            let prev = app
-                .state::<AppState>()
-                .snapshot
-                .lock()
-                .unwrap()
-                .usage
-                .clone();
-            UsageSnapshot {
-                usage: prev,
-                error: Some(e),
-                fetched_at: Some(now_millis()),
-            }
-        }
-    };
+    }
 
+    tray::update_tray(app, &snapshots);
+
+    let snapshot = UsageSnapshot {
+        providers: snapshots,
+        fetched_at: Some(now_millis()),
+    };
     *app.state::<AppState>().snapshot.lock().unwrap() = snapshot.clone();
     let _ = app.emit("usage-updated", &snapshot);
     snapshot

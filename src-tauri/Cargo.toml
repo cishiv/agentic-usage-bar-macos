@@ -1,12 +1,12 @@
 [package]
-name = "claude-usage-menubar"
+name = "agentic-usage-bar"
 version = "0.1.0"
-description = "Menubar app showing Claude Code session & weekly usage"
+description = "macOS menubar app showing session & weekly usage for agentic coding tools (Claude Code, Codex)"
 authors = ["Shiv"]
 edition = "2021"
 
 [lib]
-name = "claude_usage_menubar_lib"
+name = "agentic_usage_bar_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -18,4 +18,5 @@ tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["time", "macros"] }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
